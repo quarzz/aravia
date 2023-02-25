@@ -15,8 +15,6 @@
 #include <chrono>
 #include <thread>
 
-#include "common/root_certificates.hpp"
-
 #include <boost/beast/core.hpp>
 #include <boost/beast/ssl.hpp>
 #include <boost/beast/websocket.hpp>
@@ -58,10 +56,6 @@ int main(int argc, char** argv)
 
         // The SSL context is required, and holds certificates
         ssl::context ctx{ssl::context::tlsv12_client};
-
-        // This holds the root certificate used for verification
-        load_root_certificates(ctx);
-        std::cout << "Certificates loaded\n";
 
         // These objects perform our I/O
         tcp::resolver resolver{ioc};
