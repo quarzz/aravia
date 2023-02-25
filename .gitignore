@@ -1,0 +1,25 @@
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake-build-*/
+
+# Compiled object files
+*.o
+*.obj
+*.so
+*.dylib
+
+# Compiled executables
+*.exe
+*.out
+
+# Visual Studio Code files
+.vscode/
+*.code-workspace
+
+# Mac-specific files
+.DS_Store
+
+# Dependencies and build output directories
+build/
+dependencies/
