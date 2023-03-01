@@ -16,6 +16,7 @@ link_libraries(${Boost_LIBRARIES})
 # Add executable target
 add_executable(aravia
     src/logger.cpp
+    src/binance.cpp
     src/price_monitor.cpp
     src/trading_bot.cpp
     src/main.cpp
