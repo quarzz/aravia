@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(client)
+project(aravia)
 
 set(CMAKE_CXX_STANDARD 14)
 
@@ -14,4 +14,9 @@ include_directories(${Boost_INCLUDE_DIRS})
 link_libraries(${Boost_LIBRARIES})
 
 # Add executable target
-add_executable(client example/websocket-client-sync-ssl.cpp)
+add_executable(aravia
+    src/logger.cpp
+    src/price_monitor.cpp
+    src/trading_bot.cpp
+    src/main.cpp
+)
