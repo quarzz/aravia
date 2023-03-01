@@ -6,6 +6,13 @@
 
 using namespace std::chrono_literals;
 
+static BinanceApi binance_api {
+    "testnet.binance.vision",
+    "7yMcbL557D7DR37EpVtt04VlNQTAHALxy9fXdiHQSgurS93iBXb0QsK07X9sBvJg",
+    "ZoDHcd36vUiUYjRKPyOPXmY0xYhL79MOnym2XXIurf739febp6ePIuSV5COnXN03",
+    "BTCUSDT"
+};
+
 void TradingBot::run() {
     m_price_monitor.start();
     m_logger.log("price monitor started");
@@ -44,7 +51,7 @@ void TradingBot::run() {
 void TradingBot::try_buy() {
     m_logger.log("buying...");
     try {
-        m_last_price = m_buy_price = binance::buy();
+        m_last_price = m_buy_price = binance_api.buy(0.001);
         m_bought_at = std::chrono::steady_clock::now();
         m_state = State::HOLDING;
         m_logger.log("  bought with price: " + std::to_string(m_buy_price));
@@ -81,7 +88,7 @@ void TradingBot::check_sell_signals() {
 void TradingBot::try_sell() {
     m_logger.log("selling...");
     try {
-        const auto sell_price = binance::sell();
+        const auto sell_price = binance_api.sell(0.001);
         m_state = State::SOLD;
         m_logger.log("  sold with price: " + std::to_string(sell_price));
         const auto profit = 0.001 * (sell_price - m_buy_price);

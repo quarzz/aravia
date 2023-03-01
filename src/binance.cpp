@@ -27,7 +27,7 @@ using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
 using namespace std::chrono_literals;
 
-namespace binance {
+namespace {
     // TODO: check if this is standard compliant, cross-platform and UB-friendly
     std::string hmac_sha256(const std::string& key, const std::string& data) {
         unsigned char hmac_digest[EVP_MAX_MD_SIZE];
@@ -42,6 +42,62 @@ namespace binance {
         }
 
         return ss.str();
+    }
+
+    void query_binance(
+        const std::string &base_url,
+        const http::verb http_verb,
+        const std::string &api_key,
+        const std::string &secret_key,
+        const std::string &endpoint,
+        std::string query_string,
+        beast::flat_buffer &buffer,
+        http::response<http::dynamic_body> &resp
+    ) {
+        asio::io_context ioc;
+        ssl::context ctx{ssl::context::tlsv12_client};
+        ssl::stream<asio::ip::tcp::socket> stream{ioc, ctx};
+        asio::ip::tcp::resolver resolver{ioc};
+        auto const results = resolver.resolve(base_url, "443");
+
+        // Set SNI Hostname (many hosts need this to handshake successfully)
+        if (!SSL_set_tlsext_host_name(stream.native_handle(), base_url.c_str())) {
+            boost::beast::error_code ec{static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category()};
+            throw boost::beast::system_error{ec};
+        }
+
+        asio::connect(stream.next_layer(), results.begin(), results.end());
+        stream.handshake(ssl::stream_base::client);
+
+        // Create request
+        http::request<http::string_body> req{http_verb, endpoint, 11};
+        req.set(http::field::host, base_url);
+        req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+        req.set(http::field::content_type, "application/x-www-form-urlencoded");
+        req.set("X-MBX-APIKEY", api_key);
+
+        // Add query parameters and signature
+        if (query_string.empty())
+            query_string = "timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        else
+            query_string += "&timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+        std::string signature = hmac_sha256(secret_key.c_str(), query_string);
+        req.target(endpoint + "?" + query_string + "&signature=" + signature);
+
+        http::write(stream, req);
+        http::read(stream, buffer, resp);
+
+        if (resp.result_int() != 200)
+            throw std::string { "error" };
+
+        boost::system::error_code ec;
+        stream.shutdown(ec);
+        if (ec == boost::asio::error::eof || ec == boost::asio::ssl::error::stream_truncated) {
+            ec = {};
+        }
+        if (ec) {
+            throw boost::beast::system_error{ec};
+        }
     }
 
     void getAccountData() {
@@ -75,7 +131,6 @@ namespace binance {
         std::string query_string = "timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
         std::string signature = hmac_sha256(secret_key.c_str(), query_string);
         query_string += "&signature=" + signature;
-        // std::cout << "URI: " + endpoint + "?" + query_string << std::endl;
         req.target(endpoint + "?" + query_string);
 
         http::write(stream, req);
@@ -103,157 +158,50 @@ namespace binance {
         }
     }
 
-    double buy() {
-        std::string api_key = "7yMcbL557D7DR37EpVtt04VlNQTAHALxy9fXdiHQSgurS93iBXb0QsK07X9sBvJg";
-        std::string secret_key = "ZoDHcd36vUiUYjRKPyOPXmY0xYhL79MOnym2XXIurf739febp6ePIuSV5COnXN03";
-        std::string endpoint = "/api/v3/order";
-        std::string base_url = "testnet.binance.vision";
-
-        asio::io_context ioc;
-        ssl::context ctx{ssl::context::tlsv12_client};
-        ssl::stream<asio::ip::tcp::socket> stream{ioc, ctx};
-        asio::ip::tcp::resolver resolver{ioc};
-        auto const results = resolver.resolve(base_url, "443");
-
-        // Set SNI Hostname (many hosts need this to handshake successfully)
-        if (!SSL_set_tlsext_host_name(stream.native_handle(), base_url.c_str())) {
-            boost::beast::error_code ec{static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category()};
-            throw boost::beast::system_error{ec};
-        }
-
-        asio::connect(stream.next_layer(), results.begin(), results.end());
-        stream.handshake(ssl::stream_base::client);
-
-        // Create request
-        http::request<http::string_body> req{http::verb::post, endpoint, 11};
-        req.set(http::field::host, base_url);
-        req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-        req.set(http::field::content_type, "application/x-www-form-urlencoded");
-        req.set("X-MBX-APIKEY", api_key);
-
-        // Add query parameters and signature
-        std::string query_string = "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001";
-        query_string += "&timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-        std::string signature = hmac_sha256(secret_key.c_str(), query_string);
-        query_string += "&signature=" + signature;
-        // std::cout << "QUERY STRING: " << query_string << "\n";
-        // std::cout << "Target: " << req.target() << "\n";
-        req.target(endpoint + "?" + query_string);
-        // req.body() = query_string;
-
-        // std::cout << "BODY: " << req.body() << "\n";
-
-        http::write(stream, req);
-
-        // Read response
-        // This buffer is used for reading and must be persisted
-        beast::flat_buffer buffer;
-
-        // Declare a container to hold the response
-        http::response<http::dynamic_body> res;
-
-        // Receive the HTTP response
-        http::read(stream, buffer, res);
-
-        // Write the message to standard out
-        std::string body = beast::buffers_to_string(res.body().data());
-        // std::cout << "Buy Response Body: " << body << std::endl;
-        std::regex re(R"/("fills":.*?"price":"(.*)")/");
+    double get_price_from_order(const http::response<http::dynamic_body> &resp) {
+        std::string body = beast::buffers_to_string(resp.body().data());
+        std::regex price_regex(R"/("fills":.*?"price":"(.*)")/");
         std::smatch match;
-        double price = -1;
-        if (std::regex_search(body, match, re)) {
-            price = std::stod(match[1].str());
-            // std::cout << "Buy Price: " << price << std::endl;
-        } else {
-            // std::cout << "No match found" << std::endl;
+
+        if (std::regex_search(body, match, price_regex)) {
+            const auto price = std::stod(match[1].str());
+            if (price >= 0)
+                return price;
         }
 
-        boost::system::error_code ec;
-        stream.shutdown(ec);
-        if (ec == boost::asio::error::eof || ec == boost::asio::ssl::error::stream_truncated) {
-            ec = {};
-        }
-        if (ec) {
-            throw boost::beast::system_error{ec};
-        }
-
-        return price;
+        throw std::string { "error" };
     }
+}
 
-    double sell() {
-        std::string api_key = "7yMcbL557D7DR37EpVtt04VlNQTAHALxy9fXdiHQSgurS93iBXb0QsK07X9sBvJg";
-        std::string secret_key = "ZoDHcd36vUiUYjRKPyOPXmY0xYhL79MOnym2XXIurf739febp6ePIuSV5COnXN03";
-        std::string endpoint = "/api/v3/order";
-        std::string base_url = "testnet.binance.vision";
+BinanceApi::BinanceApi(
+    const std::string &base_url,
+    const std::string &api_key,
+    const std::string &secret_key,
+    const std::string &symbol
+): m_base_url(base_url), m_api_key(api_key), m_secret_key(secret_key), m_symbol(symbol) {}
 
-        asio::io_context ioc;
-        ssl::context ctx{ssl::context::tlsv12_client};
-        ssl::stream<asio::ip::tcp::socket> stream{ioc, ctx};
-        asio::ip::tcp::resolver resolver{ioc};
-        auto const results = resolver.resolve(base_url, "443");
+double BinanceApi::buy(double quantity) {
+    beast::flat_buffer buffer;
+    http::response<http::dynamic_body> resp;
 
-        // Set SNI Hostname (many hosts need this to handshake successfully)
-        if (!SSL_set_tlsext_host_name(stream.native_handle(), base_url.c_str())) {
-            boost::beast::error_code ec{static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category()};
-            throw boost::beast::system_error{ec};
-        }
+    const std::string endpoint = "/api/v3/order";
+    const std::string query_string =
+        "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=" + std::to_string(quantity);
 
-        asio::connect(stream.next_layer(), results.begin(), results.end());
-        stream.handshake(ssl::stream_base::client);
+    query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
 
-        // Create request
-        http::request<http::string_body> req{http::verb::post, endpoint, 11};
-        req.set(http::field::host, base_url);
-        req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-        req.set(http::field::content_type, "application/x-www-form-urlencoded");
-        req.set("X-MBX-APIKEY", api_key);
+    return get_price_from_order(resp);
+}
 
-        // Add query parameters and signature
-        std::string query_string = "symbol=BTCUSDT&side=SELL&type=MARKET&quantity=0.001";
-        query_string += "&timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
-        std::string signature = hmac_sha256(secret_key.c_str(), query_string);
-        query_string += "&signature=" + signature;
-        // std::cout << "QUERY STRING: " << query_string << "\n";
-        // std::cout << "Target: " << req.target() << "\n";
-        req.target(endpoint + "?" + query_string);
-        // req.body() = query_string;
+double BinanceApi::sell(double quantity) {
+    beast::flat_buffer buffer;
+    http::response<http::dynamic_body> resp;
 
-        // std::cout << "BODY: " << req.body() << "\n";
+    const std::string endpoint = "/api/v3/order";
+    const std::string query_string =
+        "symbol=BTCUSDT&side=SELL&type=MARKET&quantity=" + std::to_string(quantity);
 
-        http::write(stream, req);
+    query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
 
-        // Read response
-        // This buffer is used for reading and must be persisted
-        beast::flat_buffer buffer;
-
-        // Declare a container to hold the response
-        http::response<http::dynamic_body> res;
-
-        // Receive the HTTP response
-        http::read(stream, buffer, res);
-
-        // Write the message to standard out
-        std::string body = beast::buffers_to_string(res.body().data());
-        // std::cout << "Sell Response Body: " << body << std::endl;
-        std::regex re(R"/("fills":.*?"price":"(.*)")/");
-        std::smatch match;
-        double price = -1;
-        if (std::regex_search(body, match, re)) {
-            price = std::stod(match[1].str());
-            // std::cout << "Buy Price: " << price << std::endl;
-        } else {
-            // std::cout << "No match found" << std::endl;
-        }
-
-        boost::system::error_code ec;
-        stream.shutdown(ec);
-        if (ec == boost::asio::error::eof || ec == boost::asio::ssl::error::stream_truncated) {
-            ec = {};
-        }
-        if (ec) {
-            throw boost::beast::system_error{ec};
-        }
-
-        return price;
-    }
+    return get_price_from_order(resp);
 }
