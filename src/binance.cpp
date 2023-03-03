@@ -87,6 +87,8 @@ namespace {
         http::write(stream, req);
         http::read(stream, buffer, resp);
 
+        // std::cout << resp << "\n";
+
         if (resp.result_int() != 200)
             throw std::string { "error" };
 
@@ -186,7 +188,7 @@ double BinanceApi::buy(double quantity) {
 
     const std::string endpoint = "/api/v3/order";
     const std::string query_string =
-        "symbol=BTCUSDT&side=BUY&type=MARKET&quantity=" + std::to_string(quantity);
+        "symbol=" + m_symbol + "&side=BUY&type=MARKET&quantity=" + std::to_string(quantity);
 
     query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
 
@@ -199,7 +201,7 @@ double BinanceApi::sell(double quantity) {
 
     const std::string endpoint = "/api/v3/order";
     const std::string query_string =
-        "symbol=BTCUSDT&side=SELL&type=MARKET&quantity=" + std::to_string(quantity);
+        "symbol=" + m_symbol + "&side=SELL&type=MARKET&quantity=" + std::to_string(quantity);
 
     query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
 
