@@ -1,11 +1,14 @@
+#ifndef PRICE_MONITOR_H
+#define PRICE_MONITOR_H
+
 #include <atomic>
 #include <future>
 
-class Logger;
+class Context;
 
 class PriceMonitor {
 public:
-    PriceMonitor(Logger &logger, const std::string &symbol);
+    PriceMonitor(const Context &context);
 
     void start();
     double get_price();
@@ -14,6 +17,7 @@ private:
     std::atomic<double> m_price { -1.0 };
     std::future<void> m_future;
 
-    Logger &m_logger;
-    std::string m_symbol;
+    const Context &m_context;
 };
+
+#endif

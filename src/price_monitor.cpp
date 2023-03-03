@@ -1,5 +1,6 @@
 #include "price_monitor.h"
 
+#include "context.h"
 #include "logger.h"
 
 #include <iostream>
@@ -133,13 +134,13 @@ namespace {
     }
 }
 
-PriceMonitor::PriceMonitor(Logger &logger, const std::string &symbol)
-: m_logger(logger), m_symbol(symbol)
+PriceMonitor::PriceMonitor(const Context &context)
+: m_context(context)
 {}
 
 void PriceMonitor::start() {
     m_future = std::async(std::launch::async, [this]() {
-        getPricesData(m_logger, m_symbol, this->m_price);
+        getPricesData(m_context.logger, m_context.symbol, this->m_price);
     });
 }
 

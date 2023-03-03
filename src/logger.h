@@ -1,3 +1,6 @@
+#ifndef LOGGER_H
+#define LOGGER_H
+
 #include <mutex>
 
 class Logger {
@@ -7,3 +10,5 @@ public:
 private:
     std::mutex m_mtx;
 };
+
+#endif

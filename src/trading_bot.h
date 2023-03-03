@@ -1,8 +1,11 @@
+#ifndef TRADING_BOT_H
+#define TRADING_BOT_H
+
 #include <chrono>
 #include <string>
 
 class BinanceApi;
-class Logger;
+class Context;
 class PriceMonitor;
 
 class TradingBot {
@@ -10,13 +13,9 @@ public:
     enum class State { BUYING, HOLDING, SELLING, SOLD };
 
     TradingBot(
+        const Context &context,
         BinanceApi &binance_api,
-        Logger &logger,
-        PriceMonitor &price_monitor,
-        double timeout,
-        double stop_loss,
-        double stop_gain,
-        double quantity
+        PriceMonitor &price_monitor
     );
     void run();
 
@@ -34,12 +33,9 @@ private:
     double m_buy_price = -100.0;
     std::chrono::time_point<std::chrono::steady_clock> m_bought_at;
 
+    const Context &m_context;
     BinanceApi &m_binance_api;
-    Logger &m_logger;
     PriceMonitor &m_price_monitor;
-
-    double m_timeout;
-    double m_stop_loss;
-    double m_stop_gain;
-    double m_quantity;
 };
+
+#endif

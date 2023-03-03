@@ -1,6 +1,7 @@
 #include "trading_bot.h"
 
 #include "binance.h"
+#include "context.h"
 #include "logger.h"
 #include "price_monitor.h"
 
@@ -12,20 +13,12 @@
 using namespace std::chrono_literals;
 
 TradingBot::TradingBot(
+    const Context &context,
     BinanceApi &binance_api,
-    Logger &logger,
-    PriceMonitor &price_monitor,
-    double timeout,
-    double stop_loss,
-    double stop_gain,
-    double quantity
-) : m_binance_api(binance_api),
-    m_logger(logger),
-    m_price_monitor(price_monitor),
-    m_timeout(timeout),
-    m_stop_loss(stop_loss),
-    m_stop_gain(stop_gain),
-    m_quantity(quantity)
+    PriceMonitor &price_monitor
+) : m_context(context),
+    m_binance_api(binance_api),
+    m_price_monitor(price_monitor)
 {}
 
 void TradingBot::run() {
@@ -38,7 +31,7 @@ void TradingBot::run() {
             try_buy();
             break;
         case State::HOLDING:
-            if (ellapsed.count() >= m_timeout) {
+            if (ellapsed.count() >= m_context.hold_timeout) {
                 log("timeout");
                 m_state = State::SELLING;
             } else {
@@ -50,8 +43,8 @@ void TradingBot::run() {
             try_sell();
             break;
         case State::SOLD:
-            log("sleeping for 15s");
-            std::this_thread::sleep_for(15s);
+            log("wait " + std::to_string(m_context.cooldown_time) + "s before next buy");
+            std::this_thread::sleep_for(std::chrono::seconds {m_context.cooldown_time });
             log("back to buying");
             m_state = State::BUYING;
             break;
@@ -62,7 +55,7 @@ void TradingBot::run() {
 void TradingBot::try_buy() {
     log("buying...");
     try {
-        m_last_price = m_buy_price = m_binance_api.buy(m_quantity);
+        m_last_price = m_buy_price = m_binance_api.buy(m_context.quantity);
         m_bought_at = std::chrono::steady_clock::now();
         m_state = State::HOLDING;
         log("bought: " + std::to_string(m_buy_price));
@@ -80,14 +73,14 @@ void TradingBot::check_sell_signals() {
 
     const auto price_delta = cur_price - m_buy_price;
     const auto delta_percent = price_delta / m_buy_price * 100.0;
-    const auto profit = price_delta * m_quantity;
+    const auto profit = price_delta * m_context.quantity;
 
     log("price: " + get_new_price_log(cur_price));
 
-    if (delta_percent <= -m_stop_loss) {
+    if (delta_percent <= -m_context.stop_loss) {
         m_state = State::SELLING;
         log("stop loss");
-    } else if (delta_percent >= m_stop_gain) {
+    } else if (delta_percent >= m_context.stop_gain) {
         m_state = State::SELLING;
         log("stop gain");
     }
@@ -98,7 +91,7 @@ void TradingBot::check_sell_signals() {
 void TradingBot::try_sell() {
     log("selling...");
     try {
-        const auto sell_price = m_binance_api.sell(m_quantity);
+        const auto sell_price = m_binance_api.sell(m_context.quantity);
         m_state = State::SOLD;
         log("sold: " + get_new_price_log(sell_price));
     }
@@ -111,13 +104,13 @@ void TradingBot::try_sell() {
 void TradingBot::log(const std::string &msg) {
     std::string prefix = "[trading_bot] ";
     prefix += msg;
-    m_logger.log(prefix);
+    m_context.logger.log(prefix);
 }
 
 std::string TradingBot::get_new_price_log(const double price) const {
     const auto price_delta = price - m_buy_price;
     const auto delta_percent = price_delta / m_buy_price * 100.0;
-    const auto profit = price_delta * m_quantity;
+    const auto profit = price_delta * m_context.quantity;
 
     std::ostringstream ss;
     ss.precision(10);

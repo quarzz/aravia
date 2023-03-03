@@ -1,5 +1,7 @@
 #include "binance.h"
 
+#include "context.h"
+
 #include <openssl/hmac.h>
 #include <sstream>
 #include <iomanip>
@@ -87,8 +89,6 @@ namespace {
         http::write(stream, req);
         http::read(stream, buffer, resp);
 
-        // std::cout << resp << "\n";
-
         if (resp.result_int() != 200)
             throw std::string { "error" };
 
@@ -175,12 +175,8 @@ namespace {
     }
 }
 
-BinanceApi::BinanceApi(
-    const std::string &base_url,
-    const std::string &api_key,
-    const std::string &secret_key,
-    const std::string &symbol
-): m_base_url(base_url), m_api_key(api_key), m_secret_key(secret_key), m_symbol(symbol) {}
+BinanceApi::BinanceApi(const Context &context): m_context(context)
+{}
 
 double BinanceApi::buy(double quantity) {
     beast::flat_buffer buffer;
@@ -188,9 +184,9 @@ double BinanceApi::buy(double quantity) {
 
     const std::string endpoint = "/api/v3/order";
     const std::string query_string =
-        "symbol=" + m_symbol + "&side=BUY&type=MARKET&quantity=" + std::to_string(quantity);
+        "symbol=" + m_context.symbol + "&side=BUY&type=MARKET&quantity=" + std::to_string(quantity);
 
-    query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
+    query_binance(m_context.base_url, http::verb::post, m_context.api_key, m_context.secret_key, endpoint, query_string, buffer, resp);
 
     return get_price_from_order(resp);
 }
@@ -201,9 +197,9 @@ double BinanceApi::sell(double quantity) {
 
     const std::string endpoint = "/api/v3/order";
     const std::string query_string =
-        "symbol=" + m_symbol + "&side=SELL&type=MARKET&quantity=" + std::to_string(quantity);
+        "symbol=" + m_context.symbol + "&side=SELL&type=MARKET&quantity=" + std::to_string(quantity);
 
-    query_binance(m_base_url, http::verb::post, m_api_key, m_secret_key, endpoint, query_string, buffer, resp);
+    query_binance(m_context.base_url, http::verb::post, m_context.api_key, m_context.secret_key, endpoint, query_string, buffer, resp);
 
     return get_price_from_order(resp);
 }
