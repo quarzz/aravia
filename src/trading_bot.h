@@ -18,6 +18,7 @@ public:
         PriceMonitor &price_monitor
     );
     void run();
+    void stop();
 
 private:
     void try_buy();
@@ -28,6 +29,7 @@ private:
     std::string get_new_price_log(const double price) const;
 
 private:
+    std::atomic<bool> m_is_stopped { false };
     State m_state = State::BUYING;
     double m_last_price = -100.0;
     double m_buy_price = -100.0;
@@ -38,7 +40,9 @@ private:
     PriceMonitor &m_price_monitor;
 
     double m_initial_balance;
-    std::chrono::time_point<std::chrono::steady_clock> m_started_at = std::chrono::steady_clock::now();
+    std::chrono::time_point<std::chrono::steady_clock> m_started_at {
+        std::chrono::steady_clock::now()
+    };
 };
 
 #endif

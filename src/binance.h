@@ -9,7 +9,6 @@ class BinanceApi {
 public:
     BinanceApi(const Context &context);
 
-    // void getAccountData();
     double buy(double quantity);
     double sell(double quantity);
 

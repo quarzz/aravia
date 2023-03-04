@@ -57,31 +57,40 @@ namespace {
         http::response<http::dynamic_body> &resp
     ) {
         asio::io_context ioc;
-        ssl::context ctx{ssl::context::tlsv12_client};
-        ssl::stream<asio::ip::tcp::socket> stream{ioc, ctx};
-        asio::ip::tcp::resolver resolver{ioc};
+        ssl::context ctx { ssl::context::tlsv12_client };
+        ssl::stream<asio::ip::tcp::socket> stream { ioc, ctx };
+        asio::ip::tcp::resolver resolver { ioc };
         auto const results = resolver.resolve(base_url, "443");
 
         // Set SNI Hostname (many hosts need this to handshake successfully)
         if (!SSL_set_tlsext_host_name(stream.native_handle(), base_url.c_str())) {
-            boost::beast::error_code ec{static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category()};
+            boost::beast::error_code ec {
+                static_cast<int>(::ERR_get_error()),
+                boost::asio::error::get_ssl_category()
+            };
             throw boost::beast::system_error{ec};
         }
 
         asio::connect(stream.next_layer(), results.begin(), results.end());
         stream.handshake(ssl::stream_base::client);
 
-        // Create request
-        http::request<http::empty_body> req{http_verb, endpoint, 11};
+        http::request<http::empty_body> req { http_verb, endpoint, 11 };
         req.set(http::field::host, base_url);
         req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
         req.set("X-MBX-APIKEY", api_key);
 
-        // Add query parameters and signature
         if (query_string.empty())
-            query_string = "timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+            query_string = "timestamp=" + std::to_string(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()
+                ).count()
+            );
         else
-            query_string += "&timestamp=" + std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count());
+            query_string += "&timestamp=" + std::to_string(
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()
+                ).count()
+            );
         std::string signature = hmac_sha256(secret_key.c_str(), query_string);
         req.target(endpoint + "?" + query_string + "&signature=" + signature);
 
@@ -89,7 +98,7 @@ namespace {
         http::read(stream, buffer, resp);
 
         if (resp.result_int() != 200)
-            throw std::string { "error" };
+            throw std::runtime_error { "binance respont with code != 200" };
 
         boost::system::error_code ec;
         stream.shutdown(ec);
@@ -112,7 +121,7 @@ namespace {
                 return price;
         }
 
-        throw std::string { "binance_api_parse_error" };
+        throw std::runtime_error { "price not found in order response" };
     }
 
     double parse_balance_from_account(
@@ -126,7 +135,7 @@ namespace {
         if (std::regex_search(body, matches, regex)) {
             return std::stod(matches[1]);
         } else {
-            throw std::string { "binance_api_parse_error" };
+            throw std::runtime_error { "balance not found in account response" };
         }
     }
 }
@@ -161,7 +170,6 @@ double BinanceApi::sell(double quantity) {
 }
 
 double BinanceApi::get_account_balance() {
-    // getAccountData();
     beast::flat_buffer buffer;
     http::response<http::dynamic_body> resp;
 

@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
 
     BinanceApi binance_api { context };
     TradingBot trading_bot { context, binance_api, price_monitor };
+
     trading_bot.run();
 
     return 0;

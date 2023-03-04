@@ -14,8 +14,10 @@
 #include <boost/beast/websocket.hpp>
 #include <boost/beast/websocket/ssl.hpp>
 
+using namespace std::chrono_literals;
+
 using tcp = boost::asio::ip::tcp;
-namespace net = boost::asio;            // from <boost/asio.hpp>
+namespace net = boost::asio;
 namespace ssl = boost::asio::ssl;
 namespace websocket = boost::beast::websocket;
 namespace http = boost::beast::http;
@@ -28,109 +30,104 @@ namespace {
         });
         return s;
     }
-    // Sends a WebSocket message and prints the response
-    int getPricesData(Logger &logger, const std::string &symbol, std::atomic<double> &shared_price)
-    {
-        try
-        {
-            std::string host = "stream.binance.com";
-            const std::string port = "443";
-            const std::string text = R"({"method":"SUBSCRIBE","params":[")" + to_lower(symbol) + R"(@ticker"],"id":1})";
 
-            // The io_context is required for all I/O
-            net::io_context ioc;
+    websocket::stream<beast::ssl_stream<tcp::socket>> init_websocket(
+        const Context &context
+    ) {
+        std::string host = context.base_url;
+        const std::string port = "443";
+        const std::string text = R"({"method":"SUBSCRIBE","params":[")" + to_lower(context.symbol) + R"(@ticker"],"id":1})";
 
-            // The SSL context is required, and holds certificates
-            ssl::context ctx{ssl::context::tlsv12_client};
+        net::io_context ioc;
 
-            // These objects perform our I/O
-            tcp::resolver resolver{ioc};
-            websocket::stream<beast::ssl_stream<tcp::socket>> ws{ioc, ctx};
+        ssl::context ctx { ssl::context::tlsv12_client };
 
-            // Look up the domain name
-            auto const results = resolver.resolve(host, port);
+        tcp::resolver resolver { ioc };
+        websocket::stream<beast::ssl_stream<tcp::socket>> ws { ioc, ctx };
 
-            // Make the connection on the IP address we get from a lookup
-            auto ep = net::connect(beast::get_lowest_layer(ws), results);
+        auto const results = resolver.resolve(host, port);
 
-            // Set SNI Hostname (many hosts need this to handshake successfully)
-            if(! SSL_set_tlsext_host_name(ws.next_layer().native_handle(), host.c_str()))
-                throw beast::system_error(
-                    beast::error_code(
-                        static_cast<int>(::ERR_get_error()),
-                        net::error::get_ssl_category()),
-                    "Failed to set SNI Hostname");
+        auto ep = net::connect(beast::get_lowest_layer(ws), results);
 
-            // Update the host_ string. This will provide the value of the
-            // Host HTTP header during the WebSocket handshake.
-            // See https://tools.ietf.org/html/rfc7230#section-5.4
-            host += ':' + std::to_string(ep.port());
+        // Set SNI Hostname (many hosts need this to handshake successfully)
+        if(! SSL_set_tlsext_host_name(ws.next_layer().native_handle(), host.c_str()))
+            throw beast::system_error(
+                beast::error_code(
+                    static_cast<int>(::ERR_get_error()),
+                    net::error::get_ssl_category()),
+                "Failed to set SNI Hostname");
 
-            ws.next_layer().handshake(ssl::stream_base::client);
+        // Update the host_ string. This will provide the value of the
+        // Host HTTP header during the WebSocket handshake.
+        // See https://tools.ietf.org/html/rfc7230#section-5.4
+        host += ':' + std::to_string(ep.port());
+
+        ws.next_layer().handshake(ssl::stream_base::client);
 
 
-            // Set a decorator to change the User-Agent of the handshake
-            ws.set_option(websocket::stream_base::decorator(
-                [](websocket::request_type& req) {
-                    req.set(http::field::user_agent,
-                        std::string(BOOST_BEAST_VERSION_STRING) +
-                            " websocket-client-coro");
-                    req.set(http::field::content_type, "application/json");
-                })
-            );
+        ws.set_option(websocket::stream_base::decorator(
+            [](websocket::request_type& req) {
+                req.set(http::field::user_agent,
+                    std::string(BOOST_BEAST_VERSION_STRING) +
+                        " websocket-client-coro");
+                req.set(http::field::content_type, "application/json");
+            })
+        );
 
-            ws.handshake(host, "/ws");
-            ws.write(net::buffer(std::string(text)));
+        ws.handshake(host, "/ws");
+        ws.write(net::buffer(std::string(text)));
 
-            for (;;) {
-                boost::beast::multi_buffer buffer;
-                ws.read(buffer);
+        return std::move(ws);
+    }
 
-                if (buffer.size() == 0) {
-                    break;
-                }
+    bool process_next_message(
+        const Context &context,
+        websocket::stream<beast::ssl_stream<tcp::socket>> &ws,
+        std::atomic<double> &shared_price
+    ) {
+        boost::beast::multi_buffer buffer;
+        ws.read(buffer);
 
-                const auto message = boost::beast::buffers_to_string(buffer.data());
-
-                if (message == "ping") {
-                    buffer.consume(buffer.size());
-                    ws.write(boost::asio::buffer("pong"));
-                } else {
-                    std::regex bid_price_regex("\"b\":\"(.*?)\"");
-                    std::regex ask_price_regex("\"a\":\"(.*?)\"");
-                    double bid_price = -1.0;
-                    double ask_price = -1.0;
-
-                    std::smatch bid_match;
-                    if (std::regex_search(message, bid_match, bid_price_regex)) {
-                        bid_price = std::stod(bid_match[1].str());
-                    }
-
-                    std::smatch ask_match;
-                    if (std::regex_search(message, ask_match, ask_price_regex)) {
-                        ask_price = std::stod(ask_match[1].str());
-                    }
-
-                    if (bid_price >= 0 && ask_price >= 0) {
-                        const auto mid_price = (bid_price + ask_price) / 2;
-                        shared_price.store(mid_price);
-                        std::ostringstream ss;
-                        ss.precision(15);
-                        ss << "[price_monitor] fetch: bid " << bid_price
-                            << " ask " << ask_price << " mid " << mid_price;
-                        logger.log(ss.str());
-                    } else {
-                        logger.log("[price_monitor] price not found");
-                    }
-                }
-            }
+        if (buffer.size() == 0) {
+            return false;
         }
-        catch(std::exception const& e)
-        {
-            std::cerr << "Error: " << e.what() << std::endl;
-            return EXIT_FAILURE;
+
+        const auto message = boost::beast::buffers_to_string(buffer.data());
+
+        if (message == "ping") {
+            buffer.consume(buffer.size());
+            ws.write(boost::asio::buffer("pong"));
+            return true;
         }
-        return EXIT_SUCCESS;
+
+        std::regex bid_price_regex("\"b\":\"(.*?)\"");
+        std::regex ask_price_regex("\"a\":\"(.*?)\"");
+        double bid_price = -1.0;
+        double ask_price = -1.0;
+
+        std::smatch bid_match;
+        if (std::regex_search(message, bid_match, bid_price_regex)) {
+            bid_price = std::stod(bid_match[1].str());
+        }
+
+        std::smatch ask_match;
+        if (std::regex_search(message, ask_match, ask_price_regex)) {
+            ask_price = std::stod(ask_match[1].str());
+        }
+
+        if (bid_price >= 0 && ask_price >= 0) {
+            const auto mid_price = (bid_price + ask_price) / 2;
+            shared_price.store(mid_price);
+            std::ostringstream ss;
+            ss.precision(15);
+            ss << "[price_monitor] fetch: bid " << bid_price
+                << " ask " << ask_price << " mid " << mid_price;
+            context.logger.log(ss.str());
+            return true;
+        } else {
+            context.logger.log("[price_monitor] price not found");
+            return false;
+        }
     }
 }
 
@@ -139,11 +136,41 @@ PriceMonitor::PriceMonitor(const Context &context)
 {}
 
 void PriceMonitor::start() {
-    m_future = std::async(std::launch::async, [this]() {
-        getPricesData(m_context.logger, m_context.symbol, this->m_price);
+    log("starting...");
+
+    const auto &context = m_context;
+    auto &price = m_price;
+    auto &is_running = m_is_running;
+    m_future = std::async(std::launch::async, [this, &context, &price, &is_running]() {
+        while (true) {
+            try {
+                auto ws = init_websocket(context);
+                while (!process_next_message(context, ws, price));
+
+                is_running.store(true);
+
+                while (true) {
+                    process_next_message(context, ws, price);
+                }
+            }
+            catch(const std::exception &e) {
+                m_is_running.store(false);
+                this->log(std::string { "monitoring failed: " } + e.what());
+                this->log("restarting in 1s...");
+                std::this_thread::sleep_for(1s);
+            }
+        }
+
     });
+
+    while (!m_is_running.load());
+    log("started");
 }
 
 double PriceMonitor::get_price() {
     return m_price.load();
+}
+
+void PriceMonitor::log(const std::string &msg) {
+    m_context.logger.log("[price_monitor] " + msg);
 }
