@@ -7,7 +7,7 @@ class Context;
 
 class BinanceApi {
 public:
-    BinanceApi(const Context &context);
+    explicit BinanceApi(const Context &context);
 
     double buy(double quantity);
     double sell(double quantity);

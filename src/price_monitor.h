@@ -8,7 +8,7 @@ class Context;
 
 class PriceMonitor {
 public:
-    PriceMonitor(const Context &context);
+    explicit PriceMonitor(const Context &context);
 
     void start();
     double get_price();

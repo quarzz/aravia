@@ -77,7 +77,7 @@ namespace {
         ws.handshake(host, "/ws");
         ws.write(net::buffer(std::string(text)));
 
-        return std::move(ws);
+        return ws;
     }
 
     bool process_next_message(

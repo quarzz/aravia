@@ -24,6 +24,9 @@ TradingBot::TradingBot(
 }
 
 void TradingBot::run() {
+    log("started");
+    m_is_stopped.store(false);
+
     while (!m_is_stopped) {
         const auto now = std::chrono::steady_clock::now();
         const std::chrono::duration<double> ellapsed = now - m_bought_at;
@@ -85,7 +88,6 @@ void TradingBot::check_sell_signals() {
 
     const auto price_delta = cur_price - m_buy_price;
     const auto delta_percent = price_delta / m_buy_price * 100.0;
-    const auto profit = price_delta * m_context.quantity;
 
     log("check: " + get_new_price_log(cur_price));
 

@@ -35,7 +35,15 @@ namespace {
         unsigned char hmac_digest[EVP_MAX_MD_SIZE];
         unsigned int hmac_digest_len = 0;
 
-        HMAC(EVP_sha256(), key.c_str(), key.length(), (unsigned char*)data.c_str(), data.length(), hmac_digest, &hmac_digest_len);
+        HMAC(
+            EVP_sha256(),
+            key.c_str(),
+            key.length(),
+            reinterpret_cast<const unsigned char*>(data.c_str()),
+            data.length(),
+            hmac_digest,
+            &hmac_digest_len
+        );
 
         std::stringstream ss;
         ss << std::hex << std::setfill('0');
@@ -91,7 +99,7 @@ namespace {
                     std::chrono::system_clock::now().time_since_epoch()
                 ).count()
             );
-        std::string signature = hmac_sha256(secret_key.c_str(), query_string);
+        std::string signature = hmac_sha256(secret_key, query_string);
         req.target(endpoint + "?" + query_string + "&signature=" + signature);
 
         http::write(stream, req);
