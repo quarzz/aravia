@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <regex>
+#include <thread>
 
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>

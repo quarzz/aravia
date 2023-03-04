@@ -1,6 +1,7 @@
 #ifndef TRADING_BOT_H
 #define TRADING_BOT_H
 
+#include <atomic>
 #include <chrono>
 #include <string>
 
