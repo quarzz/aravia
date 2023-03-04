@@ -13,6 +13,8 @@ public:
     double buy(double quantity);
     double sell(double quantity);
 
+    double get_account_balance();
+
 private:
     const Context &m_context;
 };

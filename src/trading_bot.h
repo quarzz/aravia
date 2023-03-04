@@ -36,6 +36,9 @@ private:
     const Context &m_context;
     BinanceApi &m_binance_api;
     PriceMonitor &m_price_monitor;
+
+    double m_initial_balance;
+    std::chrono::time_point<std::chrono::steady_clock> m_started_at = std::chrono::steady_clock::now();
 };
 
 #endif

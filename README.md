@@ -1,6 +1,7 @@
 ## Setup (Linux with apt)
 
 ```console
+sudo apt update
 sudo apt install build-essential libssl-dev libboost-all-dev cmake
 ```
 ## Build

@@ -19,7 +19,9 @@ TradingBot::TradingBot(
 ) : m_context(context),
     m_binance_api(binance_api),
     m_price_monitor(price_monitor)
-{}
+{
+    m_initial_balance = m_binance_api.get_account_balance();
+}
 
 void TradingBot::run() {
     while (true) {
@@ -58,7 +60,11 @@ void TradingBot::try_buy() {
         m_last_price = m_buy_price = m_binance_api.buy(m_context.quantity);
         m_bought_at = std::chrono::steady_clock::now();
         m_state = State::HOLDING;
-        log("bought: " + std::to_string(m_buy_price));
+        std::ostringstream oss;
+        oss << "bought: price " << m_buy_price
+            << " quantity " << m_context.quantity
+            << " spent " << m_buy_price * m_context.quantity;
+        log(oss.str());
     }
     catch(...) {
         log("buying failed, wait one second");
@@ -94,6 +100,16 @@ void TradingBot::try_sell() {
         const auto sell_price = m_binance_api.sell(m_context.quantity);
         m_state = State::SOLD;
         log("sold: " + get_new_price_log(sell_price));
+        std::ostringstream oss;
+        const auto current_balance = m_binance_api.get_account_balance();
+        const auto ellapsed_time = std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now() - m_started_at
+        ).count();
+        oss << "balance (" << m_context.quote_asset << "): initial " << m_initial_balance
+            << " current " << current_balance
+            << " profit " << current_balance - m_initial_balance
+            << " [/" << ellapsed_time << "s]";
+        log(oss.str());
     }
     catch (...) {
         m_state = State::HOLDING;

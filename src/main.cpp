@@ -5,6 +5,21 @@
 #include "trading_bot.h"
 
 #include <iostream>
+#include <regex>
+
+namespace {
+    std::pair<std::string, std::string> parse_assets(const std::string &symbol) {
+        std::regex regex { "([A-Z]+)/([A-Z]+)" };
+        std::smatch matches;
+
+        if (std::regex_search(symbol, matches, regex)) {
+            return { matches[1], matches[2] };
+        } else {
+            std::cerr << "symbol format doesn't match AAA/BBB\n";
+            exit(-1);
+        }
+    }
+}
 
 int main(int argc, char** argv) {
     if (argc < 7) {
@@ -22,11 +37,17 @@ int main(int argc, char** argv) {
         return -1;
     }
 
+    const std::string symbol = argv[1];
+    std::string base_asset, quote_asset;
+    std::tie(base_asset, quote_asset) = parse_assets(symbol);
+
     Context context;
     context.base_url = "testnet.binance.vision";
     context.api_key = api_key;
     context.secret_key = secret_key;
-    context.symbol = argv[1];
+    context.symbol = base_asset + quote_asset;
+    context.base_asset = base_asset;
+    context.quote_asset = quote_asset;
     context.quantity = std::stod(argv[2]);
     context.stop_loss = std::stod(argv[3]);
     context.stop_gain = std::stod(argv[4]);
